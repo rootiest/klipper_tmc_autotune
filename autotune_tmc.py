@@ -1,4 +1,4 @@
-import math, re, logging
+import math, re, logging, os
 import configfile
 import stepper
 from . import tmc
@@ -9,7 +9,19 @@ TRINAMIC_DRIVERS = ["tmc2130", "tmc2208", "tmc2209", "tmc2240", "tmc2660",
 class AutotuneTMC:
     def __init__(self, config):
         self.printer = config.get_printer()
-        self.name = config.get_name().split()[-1]
+        # Load motor databse
+        pconfig = self.printer.lookup_object('configfile')
+        dir_name = os.path.dirname(os.path.realpath(__file__))
+        filename = os.path.join(dir_name, 'motor_database.cfg')
+        try:
+            dconfig = pconfig.read_config(filename)
+        except Exception:
+            raise config.error("Cannot load config '%s'" % (filename,))
+        for c in dconfig.get_prefix_sections(''):
+            self.printer.load_object(dconfig, c.get_name())
+        # Now find our stepper and driver
+        # Using positional arguments for maxsplit works with both py2 and py3
+        self.name = config.get_name().split(None, 1)[-1]
         if not config.has_section(self.name):
             raise config.error(
                 "Could not find config section '[%s]' required by tmc autotuning"
@@ -32,7 +44,7 @@ class AutotuneTMC:
         self.motor = config.get('motor')
         self.motor_object = None
         self.motor_name = "motor_constants " + self.motor
-        if not config.has_section(self.motor_name):
+        if not self.printer.lookup_object(self.motor_name):
             raise config.error(
                 "Could not find config section '[%s]' required by tmc autotuning"
                 % (self.motor_name))
@@ -147,6 +159,8 @@ class AutotuneTMC:
         setfield('en_pwm_mode', self.stealth)
         if self.stealth:
             setfield('tpwmthrs', 0xfffff)
+        else:
+            setfield('tpwmthrs', 0)
         setvel('thigh', 0.45 * velref)
         setfield('vhighfs', True)
         setfield('vhighchm', True)
